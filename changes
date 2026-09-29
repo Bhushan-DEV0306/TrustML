@@ -1,0 +1,552 @@
+APP.PY
+
+"""
+import streamlit as st
+import pandas as pd
+from ydata_profiling import ProfileReport
+from streamlit.components.v1 import html
+
+st.set_page_config(
+    page_title="TrustML",
+    page_icon="🤖",
+    layout="wide"
+)
+
+st.title("🤖 TrustML")
+st.subheader("Trustworthy AutoML Platform")
+
+st.write(
+    "Upload your dataset and TrustML will analyze "
+    "its structure before training any model."
+)
+
+uploaded_file = st.file_uploader(
+    "Upload your CSV dataset",
+    type=["csv"]
+)
+
+if uploaded_file is not None:
+
+    df = pd.read_csv(uploaded_file)
+
+    st.success("Dataset uploaded successfully!")
+
+    st.write("### Dataset Preview")
+
+    st.dataframe(df.head())
+
+    st.write("### Dataset Shape")
+
+    rows, columns = df.shape
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Rows", rows)
+
+    with col2:
+        st.metric("Columns", columns)
+
+    st.write(df.info())
+
+
+
+
+
+    st.write("## 🔬 Automated Data Profiling")
+
+    with st.spinner("Generating detailed dataset profile..."):
+
+            profile = ProfileReport(
+                df,
+                title="TrustML Dataset Profiling Report",
+                explorative=True
+            )
+
+            profile_html = profile.to_html()
+
+    html(
+            profile_html,
+            height=1200,
+            scrolling=True
+        )
+
+    st.success("✅ Dataset profiling completed!")
+
+"""
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+from analyzer import analyze_dataset, detect_problem_type
+from checks import check_class_imbalance, check_target_distribution, run_all_checks
+from preprocessing import (
+    clean_dataset,
+    split_dataset,
+    encode_target,
+    smart_numeric_conversion,
+    compare_with_without_feature_selection,
+)
+from models import compare_models, get_models
+
+st.set_page_config(page_title="TrustML", page_icon="🤖", layout="wide")
+
+# ---------- Custom red-white theme ----------
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #FFFFFF;
+    }
+    h1, h2, h3 {
+        color: #C1121F;
+    }
+    .stTabs [data-baseweb="tab-list"] { gap: 6px; }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 8px 18px;
+        background-color: #FFF1F2;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #E63946 !important;
+        color: white !important;
+    }
+    div[data-testid="stMetric"] {
+        background: #FFF1F2;
+        border: 1px solid #E63946;
+        border-radius: 10px;
+        padding: 12px 14px;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #C1121F;
+    }
+    .stButton button {
+        background-color: #E63946;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+    }
+    .stButton button:hover {
+        background-color: #C1121F;
+        color: white;
+    }
+    div[data-testid="stExpander"] {
+        border: 1px solid #E63946;
+        border-radius: 10px;
+    }
+    .trustml-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 0.8em;
+        font-weight: 600;
+        margin-right: 6px;
+    }
+    .badge-purple { background: #FFE0E3; color: #C1121F; }
+    .badge-green  { background: #E6F9EE; color: #1C7C4D; }
+    .badge-blue   { background: #FFF1F2; color: #C1121F; }
+</style>
+, unsafe_allow_html=True)""""""
+"""
+# ---------- Session defaults ----------
+target_column = None
+final_type = None
+trained = "comparison_table" in st.session_state
+
+# ---------- Sidebar ----------
+with st.sidebar:
+    st.markdown("## 🤖 TrustML")
+    st.caption("Trustworthy, explainable AutoML")
+    st.divider()
+
+    uploaded_file = st.file_uploader("Upload your CSV", type=["csv"])
+
+    st.divider()
+    st.markdown("**Pipeline**")
+
+    step1 = "✅" if uploaded_file is not None else "⬜"
+    step2 = "✅" if st.session_state.get("target_column") else "⬜"
+    step3 = "✅" if trained else "⬜"
+
+    st.markdown(
+        f"{step1} Analyze data\n\n"
+        f"{step2} Choose target & review warnings\n\n"
+        f"{step3} Train & compare models\n\n"
+        f"⬜ Tune & explain\n\n"
+        f"⬜ Predict & download"
+    )
+
+    if trained:
+        st.divider()
+        best_row = st.session_state["comparison_table"].iloc[0]
+        st.markdown("**🏆 Current best**")
+        st.markdown(
+            f"<span class='trustml-badge badge-purple'>{best_row['Model']}</span>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(f"`{best_row.iloc[1]}`")
+
+# ---------- Header ----------
+st.markdown("# Explainable AutoML Platform")
+st.caption("Understand your data before you trust any model.")
+
+# ---------- Welcome screen ----------
+if uploaded_file is None:
+    st.info("👈 Upload a CSV file from the sidebar to begin.")
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        with st.container(border=True):
+            st.markdown("### 🔍 Explainable")
+            st.write("See every preprocessing step and why it was chosen.")
+    with c2:
+        with st.container(border=True):
+            st.markdown("### 🛡️ Leakage-aware")
+            st.write("Suspicious features are flagged before training.")
+    with c3:
+        with st.container(border=True):
+            st.markdown("### 🎯 Metric-aware")
+            st.write("Models are picked using the metric that fits your data.")
+    st.stop()
+
+# ---------- Read the file ----------
+try:
+    df = pd.read_csv(uploaded_file)
+    analysis = analyze_dataset(df)
+except Exception as error:
+    st.error(f"Could not read this file: {error}")
+    st.stop()
+
+# ---------- Top metrics ----------
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Rows", f"{analysis['rows']:,}")
+m2.metric("Columns", analysis["columns"])
+m3.metric("Duplicate rows", int(analysis["duplicates"]))
+m4.metric("Columns with missing", int((analysis["missing_values"] > 0).sum()))
+
+st.divider()
+
+# ---------- Tabs ----------
+tab_overview, tab_columns, tab_target, tab_warnings, tab_train = st.tabs(
+    ["📋 Overview", "🔎 Columns", "🎯 Target", "⚠️ Warnings", "🚀 Train"]
+)
+
+# ===== Tab 1: Overview =====
+with tab_overview:
+    st.subheader("Data preview")
+    st.dataframe(df.head(10), use_container_width=True)
+
+    st.subheader("Quick warnings")
+    warnings_found = False
+
+    if analysis["duplicates"] > 0:
+        st.warning(f"⚠️ {int(analysis['duplicates'])} duplicate rows found.")
+        warnings_found = True
+
+    if not analysis["object_analysis"].empty:
+        id_like = analysis["object_analysis"][
+            analysis["object_analysis"]["unique_percentage"] >= 95
+        ]["column"].tolist()
+        if id_like:
+            st.warning(
+                f"⚠️ ID-like columns (almost every value unique): {id_like}. "
+                "These usually should not be used as features."
+            )
+            warnings_found = True
+
+    constant_cols = analysis["unique_values"][
+        analysis["unique_values"] <= 1
+    ].index.tolist()
+    if constant_cols:
+        st.warning(f"⚠️ Constant columns (no information): {constant_cols}")
+        warnings_found = True
+
+    if not warnings_found:
+        st.success("✅ No basic data-quality warnings.")
+
+# ===== Tab 2: Columns =====
+with tab_columns:
+    st.subheader("Column summary")
+    summary = pd.DataFrame({
+        "dtype": analysis["dtypes"].astype(str),
+        "unique_values": analysis["unique_values"],
+        "missing": analysis["missing_values"],
+        "missing_%": analysis["missing_percentage"].round(2),
+    })
+    st.dataframe(summary, use_container_width=True)
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**🔢 Numeric columns**")
+        st.write(analysis["numeric_columns"] or "None")
+    with right:
+        st.markdown("**🔤 Text / categorical columns**")
+        st.write(analysis["object_columns"] or "None")
+
+    missing = analysis["missing_percentage"]
+    missing = missing[missing > 0]
+    if not missing.empty:
+        st.subheader("Missing values (%)")
+        st.bar_chart(missing)
+
+    if not analysis["object_analysis"].empty:
+        with st.expander("🔎 Text column inspection"):
+            st.dataframe(analysis["object_analysis"], use_container_width=True)
+
+# ===== Tab 3: Target =====
+with tab_target:
+    st.subheader("Choose the target column")
+
+    target_column = st.selectbox(
+        "Which column do you want to predict?",
+        options=df.columns,
+        index=None,
+        placeholder="Select the target column...",
+    )
+    st.session_state["target_column"] = target_column
+
+    if target_column is None:
+        st.info("Select the column you want to predict to continue.")
+    else:
+        target_values = df[target_column].dropna()
+        if len(target_values) > 0 and target_values.nunique() == len(target_values):
+            st.warning(
+                f"⚠️ '{target_column}' has a different value in every row. "
+                "It looks like an ID column, not a real target."
+            )
+
+        try:
+            result = detect_problem_type(df, target_column)
+        except ValueError as error:
+            st.error(str(error))
+            result = None
+
+        if result is not None:
+            with st.container(border=True):
+                col_a, col_b = st.columns([1, 3])
+                col_a.metric("Detected type", result["problem_type"].title())
+                col_b.write(result["reason"])
+
+            options = ["classification", "regression"]
+            final_type = st.radio(
+                "Confirm or change the problem type:",
+                options,
+                index=options.index(result["problem_type"]),
+                horizontal=True,
+            )
+            st.session_state["final_type"] = final_type
+
+            st.markdown(
+                f"<span class='trustml-badge badge-purple'>{final_type.upper()}</span> "
+                f"Target: **{target_column}**",
+                unsafe_allow_html=True,
+            )
+
+            st.divider()
+
+            # ----- Classification: class balance -----
+            if final_type == "classification":
+                st.subheader("Class balance")
+
+                try:
+                    balance = check_class_imbalance(df, target_column)
+                except ValueError as error:
+                    st.error(str(error))
+                else:
+                    if balance["severity"] == "balanced":
+                        st.success(balance["message"])
+                    elif balance["severity"] == "moderate":
+                        st.warning(balance["message"])
+                    else:
+                        st.error(balance["message"])
+
+                    st.write(
+                        f"Biggest class is **{balance['ratio']}x** larger "
+                        f"than the smallest. Suggested metric: "
+                        f"**{balance['recommended_metric']}**"
+                    )
+
+                    c1, c2 = st.columns([2, 3])
+                    with c1:
+                        st.dataframe(balance["class_table"], use_container_width=True)
+                    with c2:
+                        st.bar_chart(balance["class_table"].set_index("Class")["Count"])
+
+            # ----- Regression: target distribution -----
+            else:
+                st.subheader("Target distribution")
+
+                try:
+                    dist = check_target_distribution(df, target_column)
+                except ValueError as error:
+                    st.error(str(error))
+                else:
+                    if dist["severity"] == "balanced":
+                        st.success(dist["message"])
+                    elif dist["severity"] == "moderate":
+                        st.warning(dist["message"])
+                    else:
+                        st.error(dist["message"])
+
+                    d1, d2, d3 = st.columns(3)
+                    d1.metric("Skewness", dist["skewness"])
+                    d2.metric("Outliers (%)", dist["outlier_percentage"])
+                    d3.metric("Most common value (%)", dist["top_value_percentage"])
+
+                    st.write(f"Suggested metric: **{dist['recommended_metric']}**")
+
+                    counts, edges = np.histogram(df[target_column].dropna(), bins=20)
+                    histogram = pd.DataFrame(
+                        {"count": counts},
+                        index=[round(float(e), 2) for e in edges[:-1]],
+                    )
+                    st.bar_chart(histogram)
+
+# Fall back to session values so Warnings/Train tabs work across reruns
+target_column = target_column or st.session_state.get("target_column")
+final_type = final_type or st.session_state.get("final_type")
+
+# ===== Tab 4: Warnings =====
+with tab_warnings:
+    st.subheader("All checks in one place")
+
+    if target_column is None or final_type is None:
+        st.info("Choose a target column in the Target tab first.")
+    else:
+        found = run_all_checks(df, target_column, final_type)
+
+        if not found:
+            st.success("✅ No major issues found by the current checks.")
+        else:
+            high = sum(1 for w in found if w["severity"] == "high")
+            medium = sum(1 for w in found if w["severity"] == "medium")
+            low = sum(1 for w in found if w["severity"] == "low")
+
+            s1, s2, s3 = st.columns(3)
+            s1.metric("🔴 High", high)
+            s2.metric("🟡 Medium", medium)
+            s3.metric("🔵 Low", low)
+
+            st.divider()
+
+            for w in found:
+                text = w["message"]
+                if w["columns"]:
+                    text += f"  \n**Columns:** {', '.join(map(str, w['columns']))}"
+
+                if w["severity"] == "high":
+                    st.error(text)
+                elif w["severity"] == "medium":
+                    st.warning(text)
+                else:
+                    st.info(text)
+
+# ===== Tab 5: Train =====
+with tab_train:
+    st.subheader("Train baseline models")
+
+    if target_column is None or final_type is None:
+        st.info("Choose a target column in the Target tab first.")
+    else:
+        if st.button("🚀 Train Models", type="primary"):
+            progress_bar = st.progress(0, text="Cleaning data...")
+
+            smart_df, smart_log = smart_numeric_conversion(df)
+            cleaned_df, clean_log = clean_dataset(smart_df, target_column)
+            progress_bar.progress(25, text="Splitting into train/test...")
+
+            X_train, X_test, y_train, y_test = split_dataset(
+                cleaned_df, target_column, final_type
+            )
+            progress_bar.progress(40, text="Encoding target...")
+
+            y_train_enc, y_test_enc, target_encoder = encode_target(
+                y_train, y_test, final_type
+            )
+
+            progress_bar.progress(
+                50, text="Training and comparing models (this may take a moment)..."
+            )
+            comparison_table = compare_models(X_train, y_train_enc, final_type)
+            progress_bar.progress(100, text="Done!")
+
+            st.session_state["comparison_table"] = comparison_table
+            st.session_state["clean_log_display"] = smart_log + clean_log
+            st.session_state["X_train"] = X_train
+            st.session_state["y_train_enc"] = y_train_enc
+
+            st.success("✅ Training complete!")
+
+        if "comparison_table" in st.session_state:
+            st.divider()
+
+            with st.expander("🧹 Cleaning steps applied", expanded=False):
+                logs = st.session_state.get("clean_log_display", [])
+                if logs:
+                    for entry in logs:
+                        st.write(f"- {entry['detail']}")
+                else:
+                    st.write("No cleaning steps were needed.")
+
+            st.subheader("📊 Model comparison")
+            comparison_table = st.session_state["comparison_table"]
+
+            best_model_name = comparison_table.iloc[0]["Model"]
+            best_score_col = comparison_table.columns[1]
+            best_score = comparison_table.iloc[0][best_score_col]
+            dummy_score = comparison_table.loc[
+                comparison_table["Model"] == "Dummy", best_score_col
+            ].values[0]
+
+            k1, k2, k3 = st.columns(3)
+            k1.metric("🏆 Best model", best_model_name)
+            k2.metric(best_score_col, best_score)
+            k3.metric("vs. Dummy baseline", f"{best_score - dummy_score:+.4f}")
+
+            st.dataframe(
+                comparison_table.style.background_gradient(
+                    subset=[best_score_col], cmap="Reds"
+                ),
+                use_container_width=True,
+            )
+
+            st.divider()
+            with st.expander("🔬 Try feature selection (optional, may take a few minutes)"):
+                st.caption(
+                    "Uses Lasso to find which features are genuinely useful, "
+                    "then compares scores with vs without them. Only "
+                    "recommended if it genuinely improves the score."
+                )
+                if st.button("Run feature selection check"):
+                    with st.spinner(
+                        "Running Lasso feature selection (this can take a few minutes)..."
+                    ):
+                        models_dict = get_models(final_type)
+                        best_model_obj = models_dict[best_model_name]
+
+                        fs_report = compare_with_without_feature_selection(
+                            st.session_state["X_train"],
+                            st.session_state["y_train_enc"],
+                            final_type,
+                            best_model_obj,
+                        )
+
+                    c1, c2 = st.columns(2)
+                    c1.metric("Score (all features)", fs_report["full_score"])
+                    c2.metric("Score (selected features)", fs_report["selected_score"])
+
+                    st.write(
+                        f"Kept {fs_report['features_kept']} out of "
+                        f"{fs_report['features_total']} features."
+                    )
+
+                    if fs_report["use_selection"]:
+                        st.success(
+                            "✅ Feature selection genuinely improved the score — "
+                            "recommended to use it."
+                        )
+                    else:
+                        st.info(
+                            "ℹ️ Feature selection did not improve the score — "
+                            "keeping all features is better here."
+                        )"""

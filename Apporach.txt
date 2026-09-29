@@ -1,0 +1,115 @@
+Pitch: an AutoML tool that focuses on being trustworthy rather than just fast. It shows what it did to your data, warns you before you trust a bad result, and never lets test data influence a decision.
+
+Enhancements to your idea
+
+These fit your scope and are what interviewers will ask about:
+
+Dummy baseline: always train a "predict the majority class / mean" model first. Every real model must beat it, or the app says so.
+Decision log: every automatic choice (imputation, encoding, scaling, dropped column) is recorded with a plain-English reason, shown in the UI and the report.
+Overfitting check: compare train, CV and test scores and warn when the gap is large.
+Untouched test set: used exactly once, at the very end.
+Input validation at prediction time: new CSVs are checked for missing columns, wrong types and unseen categories, with clear messages.
+Permutation importance first (works for any model), SHAP optional later.
+Time-budget mode: the user picks "Quick" or "Thorough", which controls the model list, CV folds and tuning iterations.
+Metadata saved with the model: library versions, random seed, column schema, chosen metric.
+____________________________________________________________________________________________________________________________________________
+AutoML-Platform/
+├── app.py            # Streamlit UI only
+├── analyzer.py       # dataset profiling, problem-type detection
+├── checks.py         # leakage + imbalance + warnings   (new)
+├── preprocessing.py  # cleaning, ColumnTransformer, decision log
+├── features.py       # feature engineering / selection
+├── models.py         # model registry per problem type
+├── evaluation.py     # metrics, CV, confusion matrix, importance
+├── tuning.py         # tuning of top models only
+├── predictor.py      # load pipeline, validate, predict
+├── report.py         # markdown/HTML report + inference code export (new)
+├── tests/            # pytest tests  (new)
+├── saved_models/
+├── sample_data/      # includes a deliberately leaky dataset
+├── requirements.txt
+└── README.md
+__________________________________________________________________________________________________________________________________________Phases (about 3 weeks at a learning pace)
+
+Phase 0: Setup (half day)
+Virtual environment, folder structure, Git repo, requirements.txt with pinned versions, and a "hello Streamlit" page.
+Done when: the app runs locally and the repo is on GitHub.
+
+Phase 1: Upload and dataset analysis (2 days)
+CSV upload, rows/columns, dtypes, numeric vs categorical, missing values (count and %), duplicates, constant columns, high-cardinality columns, ID-like columns. Target selection and classification vs regression detection (for example: numeric target with many unique values → regression; few unique values or a text target → classification), with a user override.
+Concepts: EDA, dtypes, cardinality.
+Interview question: "How do you decide whether a numeric column is really categorical?"
+
+Phase 2: Pre-training checks (2-3 days), your biggest USP
+
+Leakage detection, using several signals:
+very high correlation with the target
+a single feature that predicts the target almost perfectly (fit a tiny decision tree on each feature alone)
+ID-like or near-unique columns
+suspicious column names (for example "outcome", "result", "final")
+features that are duplicates or transforms of the target
+a time-based warning if date columns exist (random splits may leak the future)
+Imbalance detection: class ratio, with a warning that accuracy may mislead, plus a recommended metric (F1, recall, PR-AUC).
+Other warnings: tiny dataset, too many missing values, very high-dimensional data.
+Each warning has a severity level, and the user can drop or keep the flagged feature.
+
+Concepts: target leakage, class imbalance, why accuracy fails.
+Interview question: "Give an example of leakage and how your tool catches it."
+
+Phase 3: Cleaning and preprocessing (2-3 days)
+
+Cleaning: remove duplicates, drop constant/ID columns (with reasons logged), and drop rows with missing target.
+Split first (stratified for classification, seeded), then build the pipeline.
+ColumnTransformer: numeric → impute median + scale (only for models that need it); categorical → impute most frequent + one-hot (with handle_unknown="ignore"); high-cardinality → rare-category grouping or exclusion.
+Every choice goes into the decision log.
+
+Concepts: why fit on train only, Pipeline, fit vs transform.
+Interview question: "What goes wrong if you scale before splitting?"
+
+Phase 4: Baselines and cross-validation (2-3 days)
+
+Model registry: Dummy, Logistic/Linear, Decision Tree, Random Forest, Gradient Boosting, KNN (plus one more, such as HistGradientBoosting, if practical).
+Each model is wrapped in the full preprocessing pipeline and evaluated with stratified k-fold CV (K-fold for regression).
+Metric-aware scoring: user chooses the metric, with a sensible default suggested from Phase 2 findings.
+Model comparison table with mean ± std of CV scores and training time.
+
+Concepts: CV, variance across folds, bias/variance.
+Interview question: "Why did you choose F1 over accuracy for this dataset?"
+
+Phase 5: Smart tuning (2 days)
+
+Pick the top 2-3 models by CV score, and tune only those with RandomizedSearchCV on the training set.
+Small, sensible search spaces per model, capped by the time-budget mode.
+Compare tuned vs untuned scores honestly, and report when tuning didn't help.
+
+Concepts: hyperparameters, search spaces, why tuning on test data is cheating.
+Interview question: "Why not tune all models?"
+
+Phase 6: Final evaluation and explainability (2-3 days)
+
+Test set used once. Classification: metric table, confusion matrix, ROC curve, per-class precision/recall. Regression: RMSE, MAE, R², residual plot.
+Overfitting warning based on the train/CV/test gap.
+"Beats the dummy baseline?" check.
+Permutation importance on the test set, plus built-in importances where available. SHAP optional.
+A plain-English "Why this model" summary generated from real numbers (metric optimized, scores, alternatives, and how close they were).
+
+Phase 7: Packaging and prediction (2 days)
+
+Save one object with joblib: preprocessing + feature steps + model, plus metadata.json (versions, seed, schema, metric).
+Prediction page: upload a new CSV, validate the schema (missing/extra columns, dtype problems, unseen categories), predict, and download the predictions CSV.
+Generate a small predict.py inference snippet for users.
+
+Phase 8: Report and UI polish (2 days)
+
+Downloadable report (Markdown or HTML): dataset summary, warnings, decision log, comparison table, final results, pipeline description.
+"View pipeline" section, a step-by-step layout, progress indicators, and friendly error messages.
+
+Phase 9: Testing and deployment (2 days)
+
+pytest tests: analyzer detects types correctly, leakage checker flags the leaky demo dataset, no test-data leakage in the pipeline, and save/load gives identical predictions.
+Test on 3+ datasets (classification, regression, imbalanced).
+Deploy on Streamlit Community Cloud with upload size/row caps.
+README: problem, features, screenshots or GIF, architecture, an honest limitations section, and a comparison against a hand-written baseline.
+
+Phase 10: Interview prep (1 day)
+Write a one-page "design decisions" note answering: why this order of steps, how leakage is avoided, how the metric is chosen, what the tool can't do, and what you'd build next.
