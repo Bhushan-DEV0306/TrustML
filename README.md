@@ -1,5 +1,5 @@
 # TrustML — Explainable AutoML Platform
-
+#Try Now -https://trustml.streamlit.app/
 Upload a CSV, pick what you want to predict, and TrustML analyzes your
 data, warns you about problems (leakage, imbalance, missing values),
 trains and compares multiple models, tunes the best ones, evaluates
