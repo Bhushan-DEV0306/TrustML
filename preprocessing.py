@@ -259,7 +259,7 @@ def smart_numeric_conversion(df, min_success_rate=0.8):
     df = df.copy()
     log = []
 
-    object_cols = df.select_dtypes(include=["object"]).columns.tolist()
+    object_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
 
     for column in object_cols:
         non_null = df[column].dropna()

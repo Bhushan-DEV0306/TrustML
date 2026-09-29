@@ -415,11 +415,10 @@ def check_single_feature_predictive_power(df, target_column, problem_type):
             continue
         feature = feature_df[[column]].copy()
 
-        if feature[column].dtype == "object" or feature[column].dtype.name == "category":
-            feature[column] = feature[column].astype("category").cat.codes
-        else:
+        if pd.api.types.is_numeric_dtype(feature[column]):
             feature[column] = feature[column].fillna(feature[column].median())
-
+        else:
+            feature[column] = feature[column].astype("category").cat.codes
 
 
         if problem_type == "classification":
